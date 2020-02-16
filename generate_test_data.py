@@ -137,13 +137,3 @@ df.to_sql('main',schema='src',con=engine,if_exists='append',index=False)
 #Test upload
 select_records = 'Select * From src.main Limit 5'
 data = excecute_query(select_records)
-
-
-
-#Time/8hrs
-#Relative_Effort_Score = ∑((μ−x)/σ)÷n
-#Relative_Volume = {max⁡(r)│Category}
-#Total_Work_Capacity_Units = Relative_Effort_Score * Relative_Volume_Scalar
-#Average_Assigned_Capacity = Total_Work_Capacity_Units/FTE's
-#Capacity = FTE * (((∑((μ−x)/σ)÷n)/8) ||* {max⁡(r)│Category}))
-#Capacity = FTE * (Time * (∑((μ−x)/σ)÷n * {max⁡(r)│Category}))
