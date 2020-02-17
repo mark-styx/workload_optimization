@@ -3,14 +3,14 @@ import random as rand
 
 values = {} 
 
-
+samples = 5000
 def rand_int(list_to_append,n,upper_limit): 
     for i in range(n): 
         r = rand.randint(1,5) 
         list_to_append.append(r) 
 
 values['invoices'] = [] 
-rand_int(values['invoices'],100,5) 
+rand_int(values['invoices'],samples,5) 
 
 
 def rand_price(list_to_append,n,upper_limit): 
@@ -19,27 +19,28 @@ def rand_price(list_to_append,n,upper_limit):
         list_to_append.append(r) 
 
 values['price'] = [] 
-rand_price(values['price'],100,1000000.00) 
+rand_price(values['price'],samples,1000000.00) 
 
  
 #Create categories and random list 
-business_unit = ['kerrigan','raynor','fenix'] 
+business_unit = ['supply','mining','aerospace','infantry','defense']
 client = ['terran industries','protoss corporation','zerg inc'] 
 vendor = ['brood corp','liberty national','swarm llc','void co'] 
+employee = ['kerrigan','raynor','fenix'] 
 
 
 def create_categories(category,source_list,n): 
     values[category] = []
     range_limit = len(source_list)-1 
-    cat_list = [] 
 
     for i in range(n): 
         r = rand.randint(0,range_limit) 
         values[category].append(source_list[r]) 
 
-create_categories('business_unit',business_unit,100) 
-create_categories('client',client,100) 
-create_categories('vendor',vendor,100) 
+create_categories('business_unit',business_unit,samples)
+create_categories('client',client,samples) 
+create_categories('vendor',vendor,samples) 
+create_categories('employee',employee,samples)
 
 
 #Generate random dates 
@@ -68,8 +69,8 @@ def rand_date(start_date_limit,end_date_limit,n):
  
 start_date_limit = datetime.strptime('1/1/19','%m/%d/%y') 
 end_date_limit = datetime.strptime('12/31/19','%m/%d/%y') 
-rand_date(start_date_limit,end_date_limit,100) 
-rand_date(start_date_limit,end_date_limit,100) 
+rand_date(start_date_limit,end_date_limit,samples) 
+rand_date(start_date_limit,end_date_limit,samples) 
 
  
 #Add to pandas dataframe 
@@ -104,7 +105,10 @@ def excecute_query(query):
     with psycopg2.connect("dbname=test_env user=postgres password=1928") as conn:
         cur = conn.cursor()
         cur.execute(query)
-        return cur.fetchall()
+        try:
+            return cur.fetchall()
+        except:
+            cur.close()
         
 
 #Create schema and main table
@@ -112,12 +116,13 @@ create_schema = 'Create Schema src Authorization postgres;'
 
 create_main_table = ''' 
 Create Table src.main ( 
-    rkey serial , 
+    rkey serial, 
     invoices int, 
     price float, 
     business_unit text, 
     client text, 
-    vendor text, 
+    vendor text,
+    employee text,
     t_date timestamp, 
     p_date timestamp 
 ); 
@@ -137,3 +142,4 @@ df.to_sql('main',schema='src',con=engine,if_exists='append',index=False)
 #Test upload
 select_records = 'Select * From src.main Limit 5'
 data = excecute_query(select_records)
+print(data)
