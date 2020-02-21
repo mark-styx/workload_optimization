@@ -89,8 +89,8 @@ with psycopg2.connect("user=postgres password=1928") as conn:
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT) 
     cur = conn.cursor() 
 
-    create_database = 'Create Database test_env;' 
-    drop_database = 'Drop Database test_env;' 
+    create_database = 'Create Database wlcap_test_env;' 
+    drop_database = 'Drop Database wlcap_test_env;' 
 
     try: 
         cur.execute(create_database)
@@ -102,7 +102,7 @@ with psycopg2.connect("user=postgres password=1928") as conn:
 
 #Function to execute queries
 def excecute_query(query):
-    with psycopg2.connect("dbname=test_env user=postgres password=1928") as conn:
+    with psycopg2.connect("dbname=wlcap_test_env user=postgres password=1928") as conn:
         cur = conn.cursor()
         cur.execute(query)
         try:
@@ -134,7 +134,7 @@ excecute_query(create_main_table)
 #Import sqlalchemy so we can use pandas to load data 
 import sqlalchemy 
 from sqlalchemy import create_engine 
-engine = create_engine('postgresql://postgres:1928@localhost:5432/test_env') 
+engine = create_engine('postgresql://postgres:1928@localhost:5432/wlcap_test_env') 
 
 #Insert records 
 df.to_sql('main',schema='src',con=engine,if_exists='append',index=False)

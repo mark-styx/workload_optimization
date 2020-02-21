@@ -3,7 +3,7 @@ import pandas as pd
 import sqlalchemy 
 from sqlalchemy import create_engine 
 
-engine = create_engine('postgresql://postgres:1928@localhost:5432/test_env') 
+engine = create_engine('postgresql://postgres:1928@localhost:5432/wlcap_test_env') 
 
 df = pd.read_sql('select * from src.main;',con=engine,index_col='rkey')
 df.head()
@@ -24,7 +24,7 @@ df['timedelta'].head()
 import psycopg2
 
 def excecute_query(query):
-    with psycopg2.connect("dbname=test_env user=postgres password=1928") as conn:
+    with psycopg2.connect("dbname=wlcap_test_env user=postgres password=1928") as conn:
         cur = conn.cursor()
         cur.execute(query)
         try:
