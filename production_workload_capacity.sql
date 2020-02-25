@@ -1,7 +1,11 @@
-Declare @DateStartParam as date
-Declare @DateEndParam as date
-Set @DateStartParam = '12/31/2018'
-Set @DateEndParam = '07/01/2019'
+--------------------------------
+--Workload Capacity Evaluation--
+--------------------------------
+
+Declare @date_start as date
+Declare @date_end as date
+Set @date_start = '12/31/2018'
+Set @date_end = '07/01/2019'
 
 --Dump data into memory
 IF OBJECT_ID('tempdb..#dig') IS NOT NULL DROP TABLE #dig
@@ -164,8 +168,8 @@ Select
     [Parent_Buy] = Null
 Into #DDS_Data
 From #dig
-Where   [Insertion_Date_Converted] > @DateStartParam
-    and [Insertion_Date_Converted] < @DateEndParam
+Where   [Insertion_Date_Converted] > @date_start
+    and [Insertion_Date_Converted] < @date_end
 
 --Separate Invoice Lines That do not Represent a Buy Line
 Select
@@ -537,13 +541,6 @@ Where [mos] = [m]
 --Release Memory
 Drop Table #staff
 
---Time is the standard deviations away from the population mean
-
---Capacity = FTE * (Time * (∑((μ−x)/σ)÷n * {max⁡(r)│Category}))
---Average Time vs the Mean
---Determine Media, Client, Vendor coefficients
-
-
 --Summarize effort
 Select
     [Media],
@@ -581,6 +578,7 @@ From (
         On substring([Client_Code],1,charindex(' ', [Client_Code])-1) = trim([Cli])
     Where Len(Changes_To_Buy) > 0
     Group By [CLNAME_O],trim([Publication])
+Fix This ====>
 Union
     Select
         [Media],

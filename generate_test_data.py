@@ -1,16 +1,15 @@
-#Generate Random Data 
+#Generate Random Data
 import random as rand 
+values = {}
 
-values = {} 
-
-samples = 5000
-def rand_int(list_to_append,n,upper_limit): 
+def rand_inv(list_to_append,n,upper_limit): 
     for i in range(n): 
         r = rand.randint(1,5) 
-        list_to_append.append(r) 
+        list_to_append.append(r)
 
+samples = 5000
 values['invoices'] = [] 
-rand_int(values['invoices'],samples,5) 
+rand_inv(values['invoices'],samples,5) 
 
 
 def rand_price(list_to_append,n,upper_limit): 
@@ -18,10 +17,10 @@ def rand_price(list_to_append,n,upper_limit):
         r = rand.randrange(1,upper_limit) 
         list_to_append.append(r) 
 
+
 values['price'] = [] 
 rand_price(values['price'],samples,1000000.00) 
 
- 
 #Create categories and random list 
 business_unit = ['supply','mining','aerospace','infantry','defense']
 client = ['terran industries','protoss corporation','zerg inc'] 
@@ -32,7 +31,6 @@ employee = ['kerrigan','raynor','fenix']
 def create_categories(category,source_list,n): 
     values[category] = []
     range_limit = len(source_list)-1 
-
     for i in range(n): 
         r = rand.randint(0,range_limit) 
         values[category].append(source_list[r]) 
@@ -42,14 +40,17 @@ create_categories('client',client,samples)
 create_categories('vendor',vendor,samples) 
 create_categories('employee',employee,samples)
 
-
 #Generate random dates 
 from datetime import datetime 
 from datetime import timedelta 
 
+
 def rand_date(start_date_limit,end_date_limit,n): 
+    #create empty list in our dictionary
     values['t_date'] = [] 
-    values['p_date'] = [] 
+    values['p_date'] = []
+
+    #get the total seconds between our start and end parameters
     time_delta = end_date_limit - start_date_limit 
     seconds_delta = time_delta.total_seconds()
 
@@ -66,18 +67,16 @@ def rand_date(start_date_limit,end_date_limit,n):
         end_date = start_date + timedelta(seconds=random_second) 
         values['p_date'].append(end_date) 
 
- 
+
 start_date_limit = datetime.strptime('1/1/19','%m/%d/%y') 
 end_date_limit = datetime.strptime('12/31/19','%m/%d/%y') 
 rand_date(start_date_limit,end_date_limit,samples) 
-rand_date(start_date_limit,end_date_limit,samples) 
 
- 
+
 #Add to pandas dataframe 
 import pandas as pd
 df = pd.DataFrame(values) 
 df.head() 
-
 
 #Create connection 
 import psycopg2 
@@ -99,6 +98,7 @@ with psycopg2.connect("user=postgres password=1928") as conn:
         cur.execute(drop_database)
         cur.execute(create_database)
         cur.close()
+
 
 #Function to execute queries
 def excecute_query(query):
@@ -132,8 +132,8 @@ excecute_query(create_schema)
 excecute_query(create_main_table) 
 
 #Import sqlalchemy so we can use pandas to load data 
-import sqlalchemy 
-from sqlalchemy import create_engine 
+from sqlalchemy import create_engine
+#create the connection engine
 engine = create_engine('postgresql://postgres:1928@localhost:5432/wlcap_test_env') 
 
 #Insert records 
