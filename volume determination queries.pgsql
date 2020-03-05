@@ -99,6 +99,16 @@ Set
     norm_ord_value = ord_value/(Select max(ord_value) From src.summary)
 ;
 
+--effort adjustment
+Alter Table src.summary
+    Add Column effort float
+;
+
+Update src.summary
+Set
+    effort = ((avg_days+(Select Avg(avg_days) From src.summary))/(Select stddev(avg_days) From src.summary))
+;
+
 Select
     s.business_unit,
     s.client,
@@ -106,9 +116,9 @@ Select
     trans_month,
     optimal_category,
     Case
-        When optimal_category = 'purchases' Then norm_purchases
-        When optimal_category = 'invoices' Then norm_invoices
-        When optimal_category = 'ord_value' Then norm_ord_value
+        When optimal_category = 'purchases' Then norm_purchases * effort
+        When optimal_category = 'invoices' Then norm_invoices * effort
+        When optimal_category = 'ord_value' Then norm_ord_value * effort
     Else Null End as volume_contribution
 From src.summary s
 Left Join src.r_scores r
@@ -134,9 +144,9 @@ From (
         trans_month,
         r.optimal_category,
         Case
-            When r.optimal_category = 'purchases' Then norm_purchases
-            When r.optimal_category = 'invoices' Then norm_invoices
-            When r.optimal_category = 'ord_value' Then norm_ord_value
+            When r.optimal_category = 'purchases' Then norm_purchases * effort
+            When r.optimal_category = 'invoices' Then norm_invoices * effort
+            When r.optimal_category = 'ord_value' Then norm_ord_value * effort
         Else Null End as volume_contribution
     From src.summary s
     Left Join src.r_scores r

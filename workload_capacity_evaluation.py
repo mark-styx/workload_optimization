@@ -119,8 +119,8 @@ df.head()
 
 
 #generate correlation coefficient scores
-create_r_table = '''
-    Create Table src.r_scores (
+create_corr_table = '''
+    Create Table src.corr_scores (
         business_unit text,
         client text,
         vendor text,
@@ -130,8 +130,8 @@ create_r_table = '''
 );
 '''
 
-populate_r = '''
-    Insert Into src.r_scores
+populate_corr = '''
+    Insert Into src.corr_scores
     Select
         business_unit,client,vendor,
         corr(purchase_score,time_score) as purchase_corr,
@@ -143,23 +143,23 @@ populate_r = '''
 '''
 
 #execute
-excecute_query(create_r_table)
-excecute_query(populate_r)
+excecute_query(create_corr_table)
+excecute_query(populate_corr)
 
 #check results
-df = pd.read_sql('Select * From src.r_scores Limit 5;',con=engine)
+df = pd.read_sql('Select * From src.corr_scores Limit 5;',con=engine)
 df.head()
 
 
 #add field noting the best score
 alter_r = '''
-    Alter Table src.r_scores
+    Alter Table src.corr_scores
     Add Column optimal_category text
     ;
 '''
 
 update_r = '''
-    Update src.r_scores
+    Update src.corr_scores
     Set optimal_category = Case
                             When purchase_corr > invoice_corr and purchase_corr > ord_corr Then 'purchases'
                             When invoice_corr > purchase_corr and invoice_corr > ord_corr Then 'invoices'
@@ -173,8 +173,8 @@ excecute_query(alter_r)
 excecute_query(update_r)
 
 #check results
-df = pd.read_sql('Select * From src.r_scores Limit 5;',con=engine)
-df.head()
+df = pd.read_sql('Select * From src.corr_scores Limit 5;',con=engine)
+df
 
 
 #update summary to normalize the volume measurements
@@ -201,18 +201,39 @@ excecute_query(update_summary)
 
 #check results
 df = pd.read_sql('Select * From src.summary Limit 5;',con=engine)
-df.head()
+df
+
+alter_summary2 = '''
+--effort adjustment
+Alter Table src.summary
+    Add Column effort float
+;
+'''
+
+update_summary2 = '''
+Update src.summary
+Set
+    effort = ((avg_days+(Select Avg(avg_days) From src.summary))/(Select stddev(avg_days) From src.summary))
+;
+'''
+
+#execute
+excecute_query(alter_summary2)
+excecute_query(update_summary2)
+
+df = pd.read_sql('Select client,vendor,business_unit,avg_days,effort,trans_month From src.summary Limit 5;',con=engine)
+df
 
 
 #update the summary to note the optimal category we determined and the normalized volume contribution
-alter_summary_2 = '''
+alter_summary_3 = '''
     Alter Table src.summary
         Add Column optimal_category text,
         Add Column volume_contribution float
     ;
 '''
 
-update_summary_2 = '''
+update_summary_3 = '''
     Update src.summary
     Set
         optimal_category = b.optimal_category,
@@ -225,12 +246,12 @@ update_summary_2 = '''
             trans_month,
             r.optimal_category,
             Case
-                When r.optimal_category = 'purchases' Then norm_purchases
-                When r.optimal_category = 'invoices' Then norm_invoices
-                When r.optimal_category = 'ord_value' Then norm_ord_value
+                When r.optimal_category = 'purchases' Then norm_purchases * effort
+                When r.optimal_category = 'invoices' Then norm_invoices * effort
+                When r.optimal_category = 'ord_value' Then norm_ord_value * effort
             Else Null End as volume_contribution
         From src.summary s
-        Left Join src.r_scores r
+        Left Join src.corr_scores r
         On s.business_unit = r.business_unit
             and s.client = r.client
             and s.vendor = r.vendor
@@ -243,19 +264,33 @@ update_summary_2 = '''
 '''
 
 #execute
-excecute_query(alter_summary_2)
-excecute_query(update_summary_2)
+excecute_query(alter_summary_3)
+excecute_query(update_summary_3)
 
 #check results
-df = pd.read_sql('Select * From src.summary Limit 5;',con=engine)
-df.head()
+df = pd.read_sql('Select client,vendor,business_unit,volume_contribution,optimal_category,trans_month From src.summary Limit 5;',con=engine)
+df
+
+#summaries
+work_vol_client = excecute_query('Select client,sum(volume_contribution) as volume From src.summary Group By client;')
+print(work_vol_client)
+
+work_vol_vend = excecute_query('Select vendor,sum(volume_contribution) as volume From src.summary Group By vendor;')
+print(work_vol_vend)
+
+work_vol_bu = excecute_query('Select business_unit,sum(volume_contribution) as volume From src.summary Group By business_unit;')
+print(work_vol_bu)
+
+df[['client','volume_contribution']].groupby('client').sum()
+df[['vendor','volume_contribution']].groupby('vendor').sum()
+df[['business_unit','volume_contribution']].groupby('business_unit').sum()
 
 #get final volume measurement
 #pandas
 df = pd.read_sql('Select * From src.summary;',con=engine)
 print(df['volume_contribution'].sum())
 #postgresql
-work_vol = pd.read_sql('Select sum(volume_contribution) as volume From src.summary;',con=engine)
+work_vol = excecute_query('Select sum(volume_contribution) as volume From src.summary;')
 print(work_vol)
 
 
