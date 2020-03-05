@@ -1,0 +1,2 @@
+So now that we have our gameplan and our test data generated, let's perform our operations.
+
