@@ -1,2 +1,341 @@
 So now that we have our gameplan and our test data generated, let's perform our operations.
 
+Here's what our data currently looks like:
+https://gist.github.com/meow1928/956505ad55061001aad03ee87f57afc5
+output:
+
+df.head()...
+invoices	price	business_unit	client	vendor	employee	t_date	p_date
+rkey									
+1	2	144792.0	supply	protoss corporation	swarm llc	fenix	2019-09-21 05:12:01	2019-10-12 12:06:36
+2	2	525806.0	mining	zerg inc	void co	fenix	2019-02-04 03:17:40	2019-08-14 00:53:25
+3	3	311876.0	supply	terran industries	swarm llc	fenix	2019-10-02 18:48:55	2019-11-14 04:37:44
+4	2	997773.0	supply	zerg inc	void co	kerrigan	2019-03-04 15:11:08	2019-12-26 11:33:49
+5	1	158536.0	mining	protoss corporation	void co	kerrigan	2019-02-28 07:19:43	2019-04-13 10:40:35
+
+The first thing we need to do here is evaluate the number of days between the transaction date and payment date. Many of you are probably familiar with how to do this in pandas, but for our purposes we'll update the table in sql to include it.
+We'll start by adding our function to execute queries:
+import psycopg2
+
+def excecute_query(query):
+    with psycopg2.connect("dbname=wlcap_test_env user=postgres password=1928") as conn:
+        cur = conn.cursor()
+        cur.execute(query)
+        try:
+            return cur.fetchall()
+        except:
+            cur.close()
+
+Next, we'll add the column to the table:
+add_column = '''Alter Table src.main
+Add Column td_days float;'''
+
+Then we add our query to populate the column:
+update_column = '''Update src.main
+Set td_days = extract(day from (p_date-t_date));'''
+
+Finally, we execute the queries:
+excecute_query(add_column)
+excecute_query(update_column)
+
+All together:
+https://gist.github.com/meow1928/90663aeddf174446046808fcfafc19cd
+
+In order to perform our analysis, we'll summarize our events at the month level. We'll start by creating a summary table:
+create_summary = '''
+--Create Summary
+    Create Table src.summary (
+        purchases float,
+        invoices float,
+        ord_value float,
+        avg_days float,
+        business_unit text,
+        client text,
+        vendor text,
+        trans_month timestamp without time zone
+);
+'''
+
+Next, we'll populate it:
+populate_summary = '''
+    Insert Into src.summary
+    Select
+        count(rkey) as purchases,
+        sum(invoices) as invoices,
+        sum(price) as ord_value,
+        avg(td_days) as avg_days,
+        business_unit,
+        client,
+        vendor,
+        date_trunc('month',t_date) as trans_month
+    From src.main
+    Group By business_unit, client, vendor, date_trunc('month',t_date)
+    ;
+'''
+
+Then we execute our queries:
+excecute_query(create_summary)
+excecute_query(populate_summary)
+
+All together:
+https://gist.github.com/meow1928/450a7fa73a44549ea5469d5616b7e52f
+
+Let's take a look at the results:
+df = pd.read_sql('Select * From src.summary Limit 5;',con=engine)
+df
+output:
+	purchases	invoices	ord_value	avg_days	business_unit	client	vendor	trans_month
+0	7.0	17.0	4260609.0	73.714286	aerospace	zerg inc	brood corp	2019-08-01
+1	12.0	41.0	6118418.0	131.250000	aerospace	zerg inc	brood corp	2019-04-01
+2	15.0	55.0	5766521.0	165.666667	defense	terran industries	brood corp	2019-01-01
+3	17.0	55.0	8207426.0	197.117647	defense	protoss corporation	liberty national	2019-01-01
+4	11.0	36.0	6298180.0	143.818182	mining	protoss corporation	swarm llc	2019-03-01
+
+Create our table:
+create_corr_table = '''
+    Create Table src.r_scores (
+        business_unit text,
+        client text,
+        vendor text,
+        purchase_corr float,
+        invoice_corr float,
+        ord_corr float
+);
+'''
+
+Populate the table:
+populate_corr = '''
+    Insert Into src.r_scores
+    Select
+        business_unit,client,vendor,
+        corr(purchase_score,time_score) as purchase_corr,
+        corr(invoice_score,time_score) as inv_corr,
+        corr(ord_score,time_score) as ord_corr
+    From src.score
+    Group By business_unit,client,vendor
+    ;
+'''
+
+Run the queries:
+excecute_query(create_corr_table)
+excecute_query(populate_corr)
+
+All together:
+https://gist.github.com/meow1928/ec451df358fb19def9771a9069249c52
+
+Let's check our results:
+df = pd.read_sql('Select * From src.corr_scores Limit 5;',con=engine)
+df
+
+	business_unit	client	vendor	purchase_corr	invoice_corr	ord_corr
+0	infantry	zerg inc	liberty national	0.819985	0.759646	0.848776
+1	mining	protoss corporation	brood corp	0.845749	0.863617	0.878300
+2	supply	protoss corporation	void co	0.888852	0.942769	0.843190
+3	supply	terran industries	liberty national	0.821562	0.746515	0.794982
+4	supply	protoss corporation	brood corp	0.637032	0.664217	0.419170
+
+Okay so now we have our correlation scores. In the previous sessions, we determined that the measurement with the highest correlation to effort will be the optimal measurement. Given this, we simply need to evaluate the highest score and output the corresponding category. There are a few ways to accomplish this, but let's start with adding the column to our table.
+alter_corr = '''
+    Alter Table src.corr_scores
+    Add Column optimal_category text
+    ;
+'''
+
+There are a few ways to determine witch score is the highest, but for this example we'll use a simple case statement.
+update_corr = '''
+    Update src.corr_scores
+    Set optimal_category = Case
+                            When purchase_corr > invoice_corr and purchase_corr > ord_corr Then 'purchases'
+                            When invoice_corr > purchase_corr and invoice_corr > ord_corr Then 'invoices'
+                            When ord_corr > purchase_corr and ord_corr > invoice_corr Then 'ord_value'
+                            Else Null End
+    ;
+'''
+
+Execute the queries:
+excecute_query(alter_corr)
+excecute_query(update_corr)
+
+All together:
+https://gist.github.com/meow1928/76004cb51ed49f95ada80624aecabaf6
+
+Let's check our results:
+df = pd.read_sql('Select * From src.corr_scores Limit 5;',con=engine)
+df
+
+	business_unit	client	vendor	purchase_corr	invoice_corr	ord_corr	optimal_category
+0	infantry	zerg inc	liberty national	0.819985	0.759646	0.848776	ord_value
+1	mining	protoss corporation	brood corp	0.845749	0.863617	0.878300	ord_value
+2	supply	protoss corporation	void co	0.888852	0.942769	0.843190	invoices
+3	supply	terran industries	liberty national	0.821562	0.746515	0.794982	purchases
+4	supply	protoss corporation	brood corp	0.637032	0.664217	0.419170	invoices
+
+We now have our measurement determination, so the next step will be to normalize our measurement category choices.
+
+Let's go back to the summary table and add fields to accomplish this.
+alter_summary = '''
+    Alter Table src.summary
+        Add Column norm_purchases float,
+        Add Column norm_invoices float,
+        Add Column norm_ord_value float
+    ;
+'''
+
+Now to populate:
+update_summary = '''
+    Update src.summary
+    Set
+        norm_purchases = purchases/(Select max(purchases) From src.summary),
+        norm_invoices = invoices/(Select max(invoices) From src.summary),
+        norm_ord_value = ord_value/(Select max(ord_value) From src.summary)
+    ;
+'''
+
+Run the queries:
+excecute_query(alter_summary)
+excecute_query(update_summary)
+
+All together:
+https://gist.github.com/meow1928/111b0dd84c568e89398d793a241ebb39
+
+Test our results:
+df = pd.read_sql('Select * From src.summary Limit 5;',con=engine)
+df
+
+purchases	norm_purchases	invoices	norm_invoices	ord_value	norm_ord_value	avg_days	business_unit	client	vendor	trans_month
+0	7.0	0.333333	17.0	0.229730	4260609.0	0.375456	73.714286	aerospace	zerg inc	brood corp	2019-08-01
+1	12.0	0.571429	41.0	0.554054	6118418.0	0.539171	131.250000	aerospace	zerg inc	brood corp	2019-04-01
+2	15.0	0.714286	55.0	0.743243	5766521.0	0.508161	165.666667	defense	terran industries	brood corp	2019-01-01
+3	17.0	0.809524	55.0	0.743243	8207426.0	0.723260	197.117647	defense	protoss corporation	liberty national	2019-01-01
+4	11.0	0.523810	36.0	0.486486	6298180.0	0.555012	143.818182	mining	protoss corporation	swarm llc	2019-03-01
+
+So far we have our category determination and our volume category measurement normalization. We now have to measure effort and apply it to our volume normalization.
+
+Adding our column:
+alter_summary2 = '''
+    Alter Table src.summary
+        Add Column effort float
+;
+'''
+
+Populating:
+update_summary2 = '''
+    Update src.summary
+    Set
+        effort = ((avg_days+(Select Avg(avg_days) From src.summary))/(Select stddev(avg_days) From src.summary))
+;
+'''
+
+Run:
+excecute_query(alter_summary2)
+excecute_query(update_summary2)
+
+All together:
+https://gist.github.com/meow1928/c9c347d3abc087dbce65b581936511df
+
+Test:
+df = pd.read_sql('Select client,vendor,business_unit,avg_days,effort,trans_month From src.summary Limit 5;',con=engine)
+df
+
+output:
+client	vendor	business_unit	avg_days	effort	trans_month
+0	protoss corporation	brood corp	supply	87.400000	3.371929	2019-06-01
+1	protoss corporation	brood corp	supply	107.000000	3.729026	2019-05-01
+2	protoss corporation	brood corp	supply	170.333333	4.882913	2019-04-01
+3	protoss corporation	brood corp	supply	170.727273	4.890090	2019-03-01
+4	protoss corporation	brood corp	supply	176.636364	4.997749	2019-02-01
+
+Now we have everything we need to evaluate our volume contribution. We just need to take the appropriate normalized measurement and multiply it by our effort score.
+
+Add columns:
+alter_summary_3 = '''
+    Alter Table src.summary
+        Add Column optimal_category text,
+        Add Column volume_contribution float
+    ;
+'''
+
+Update Query:
+    Update src.summary
+    Set
+        optimal_category = b.optimal_category,
+        volume_contribution = b.volume_contribution
+    From (
+        Select
+            s.business_unit,
+            s.client,
+            s.vendor,
+            trans_month,
+            r.optimal_category,
+            Case
+                When r.optimal_category = 'purchases' Then norm_purchases * effort
+                When r.optimal_category = 'invoices' Then norm_invoices * effort
+                When r.optimal_category = 'ord_value' Then norm_ord_value * effort
+            Else Null End as volume_contribution
+        From src.summary s
+        Left Join src.corr_scores r
+        On s.business_unit = r.business_unit
+            and s.client = r.client
+            and s.vendor = r.vendor
+    ) b
+    Where src.summary.business_unit = b.business_unit
+        and src.summary.client = b.client
+        and src.summary.vendor = b.vendor
+        and src.summary.trans_month = b.trans_month
+    ;
+'''
+
+Execute:
+excecute_query(alter_summary_3)
+excecute_query(update_summary_3)
+
+All together:
+https://gist.github.com/meow1928/975697c6a827f7ad5fb513dae54b1c34
+
+Let's check our results:
+df = pd.read_sql('Select * From src.summary Limit 5;',con=engine)
+df
+output:
+client	vendor	business_unit	volume_contribution	optimal_category	trans_month
+0	protoss corporation	brood corp	aerospace	2.799779	purchases	2019-01-01
+1	protoss corporation	brood corp	aerospace	1.810712	purchases	2019-02-01
+2	protoss corporation	brood corp	aerospace	1.588611	purchases	2019-03-01
+3	protoss corporation	brood corp	aerospace	1.424334	purchases	2019-04-01
+4	protoss corporation	brood corp	aerospace	0.911874	purchases	2019-05-01
+
+
+We have everything we need now. We can summarize this volume measurement however we need to.
+client totals:
+
+sql:
+work_vol_client = excecute_query('Select client,sum(volume_contribution) as volume From src.summary Group By client;')
+print(work_vol_client)
+output:
+[('zerg inc', 301.97285836877217), ('protoss corporation', 289.6152697225409), ('terran industries', 300.82803366734277)]
+
+pandas:
+df[['client','volume_contribution']].groupby('client').sum()
+output:
+	volume_contribution
+client	
+protoss corporation	289.615270
+terran industries	300.828034
+zerg inc	301.972858
+
+total sum:
+
+sql:
+work_vol = excecute_query('Select sum(volume_contribution) as volume From src.summary;')
+print(work_vol)
+output:
+[(892.416161758655,)]
+
+pandas:
+print(df['volume_contribution'].sum())
+output:
+892.4161617586558
+
+That's it for our relative volume measurement, now we can move to look at our optimization questions.
+
+-------------------------
+
